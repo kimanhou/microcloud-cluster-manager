@@ -24,6 +24,21 @@ import ClusterSelector from "pages/clusters/ClusterSelector";
 import { getLinkIconType, LINK_TYPES } from "pages/clusters/clusterLinkTypes";
 import ReadOnlyInput from "components/forms/ReadOnlyInput";
 import ResourceIcon from "components/ResourceIcon";
+import { isBidirectional, isUnidirectional } from "util/clusterLinks";
+import DocLink from "components/DocLink";
+import GroupSelection from "./GroupSelection";
+import { useAuthGroups } from "context/useAuthGroups";
+
+interface CreateClusterLinkFormValues {
+  targetCluster: string;
+  type: ClusterLink["type"];
+  useDifferentTargetAddress: boolean;
+  targetAddress: string;
+  name: string;
+  description: string;
+  authGroups: string[];
+  initialAuthGroups?: string[];
+}
 
 const CreateClusterLinkPanel: FC = () => {
   const panelParams = usePanelParams();
@@ -39,15 +54,6 @@ const CreateClusterLinkPanel: FC = () => {
     panelParams.clear();
     notify.clear();
   };
-
-  interface CreateClusterLinkFormValues {
-    targetCluster: string;
-    type: ClusterLink["type"];
-    useDifferentTargetAddress: boolean;
-    targetAddress: string;
-    name: string;
-    description: string;
-  }
 
   const handleSubmit = async (
     values: CreateClusterLinkFormValues,
@@ -107,10 +113,21 @@ const CreateClusterLinkPanel: FC = () => {
       targetAddress: "",
       name: "",
       description: "",
+      authGroups: [],
     },
     validationSchema: ConfigurationSchema,
     onSubmit: handleSubmit,
   });
+
+  const { data: authGroups = [] } = useAuthGroups(
+    formik.values.type === "bidirectional",
+  );
+
+  const selectedGroups = new Set(formik.values.authGroups);
+  const initial = new Set(formik.values.initialAuthGroups);
+  const removed = [...initial].filter((g) => !selectedGroups.has(g));
+  const added = [...selectedGroups].filter((g) => !initial.has(g));
+  const modifiedGroups = new Set([...removed, ...added]);
 
   const resetTargetAddress = (resetAddressToggle = true) => {
     if (resetAddressToggle) {
@@ -139,7 +156,7 @@ const CreateClusterLinkPanel: FC = () => {
           <SidePanel.HeaderTitle>Create cluster link</SidePanel.HeaderTitle>
         </SidePanel.Header>
         <NotificationRow className="u-no-padding" />
-        <SidePanel.Content className="u-no-padding">
+        <SidePanel.Content className="u-no-padding create-cluster-link-panel">
           <ScrollableContainer
             dependencies={[notify.notification]}
             belowIds={["panel-footer"]}
@@ -257,6 +274,59 @@ const CreateClusterLinkPanel: FC = () => {
                   label="Description"
                   {...formik.getFieldProps("description")}
                 />
+                {(isBidirectional(formik.values) ||
+                  isUnidirectional(formik.values)) && (
+                  <>
+                    <hr />
+                    <h2 className="p-muted-heading auth-groups-header">
+                      Auth groups
+                    </h2>
+                    <p className="u-text--muted">
+                      Control the permissions that the source and target have to
+                      act on each other. <br />
+                      <DocLink docPath="/auth-groups">
+                        Learn more about cluster link permissions in the docs.
+                      </DocLink>
+                    </p>
+                    <p className="u-no-margin--bottom">Source</p>
+                    <p className="u-text--muted">
+                      Control how the source can act on the target.
+                    </p>
+                    <GroupSelection
+                      groups={authGroups}
+                      modifiedGroups={modifiedGroups}
+                      parentItemName="cluster link"
+                      selectedGroups={selectedGroups}
+                      setSelectedGroups={(val, isUnselectAll) => {
+                        if (isUnselectAll) {
+                          formik.setFieldValue("authGroups", []);
+                        } else {
+                          formik.setFieldValue("authGroups", val);
+                        }
+                      }}
+                      toggleGroup={(group) => {
+                        const currentGroups = formik.values.authGroups;
+                        if (currentGroups.includes(group)) {
+                          formik.setFieldValue(
+                            "authGroups",
+                            currentGroups.filter((g) => g !== group),
+                          );
+                        } else {
+                          formik.setFieldValue("authGroups", [
+                            ...currentGroups,
+                            group,
+                          ]);
+                        }
+                      }}
+                      scrollDependencies={[formik]}
+                      hasScrollableTable={false}
+                    />
+                    <p className="u-no-margin--bottom">Target</p>
+                    <p className="u-text--muted">
+                      Control how the target can act on the source.
+                    </p>
+                  </>
+                )}
               </>
             </Form>
           </ScrollableContainer>
